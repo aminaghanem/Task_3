@@ -46,9 +46,8 @@ export default function AllPerks() {
     
     // This effect depends on [perks], so it re-runs whenever perks changes
   }, [perks]) // Dependency: re-run when perks array changes
-
   
-  async function loadAllPerks() {
+  async function loadAllPerks({ search, merchant } = {}) {
     // Reset error state before new request
     setError('')
     
@@ -56,13 +55,15 @@ export default function AllPerks() {
     setLoading(true)
     
     try {
+      // Determine effective params (explicit overrides take precedence)
+      const searchParam = (search !== undefined) ? (String(search).trim() || undefined) : (searchQuery.trim() || undefined)
+      const merchantParam = (merchant !== undefined) ? (String(merchant).trim() || undefined) : (merchantFilter.trim() || undefined)
+
       // Make GET request to /api/perks/all with query parameters
       const res = await api.get('/perks/all', {
         params: {
-          // Only include search param if searchQuery is not empty
-          search: searchQuery.trim() || undefined,
-          // Only include merchant param if merchantFilter is not empty
-          merchant: merchantFilter.trim() || undefined
+          search: searchParam,
+          merchant: merchantParam
         }
       })
       
@@ -75,7 +76,6 @@ export default function AllPerks() {
       setError(err?.response?.data?.message || 'Failed to load perks')
       
     } finally {
-      // This block runs whether try succeeds or catch handles error
       // Always stop loading indicator
       setLoading(false)
     }
@@ -83,24 +83,46 @@ export default function AllPerks() {
 
   // ==================== EVENT HANDLERS ====================
 
-  
   function handleSearch(e) {
     // Prevent default form submission behavior (page reload)
     e.preventDefault()
-    
+
     // Immediately reload perks with current search and filter values
-    // This bypasses the debounce delay for instant results
     loadAllPerks()
   }
 
-  
   function handleReset() {
     // Reset search and filter states to empty
-    // The useEffect with [searchQuery, merchantFilter] dependencies
-    // will automatically trigger and reload all perks
     setSearchQuery('')
     setMerchantFilter('')
+
+    // Immediately reload without filters (explicit overrides)
+    loadAllPerks({ search: '', merchant: '' })
   }
+
+  // Extract unique merchants when perks change (kept here for clarity)
+  useEffect(() => {
+    const merchants = perks
+      .map(p => p.merchant)
+      .filter(m => m && m.trim())
+    setUniqueMerchants([...new Set(merchants)])
+  }, [perks])
+
+  // Hook #1: initial load
+  useEffect(() => {
+    loadAllPerks()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Hook #2: debounced auto-search on searchQuery / merchantFilter change
+  useEffect(() => {
+    const t = setTimeout(() => {
+      loadAllPerks()
+    }, 450)
+
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, merchantFilter])
 
   
   
@@ -136,7 +158,8 @@ export default function AllPerks() {
                 type="text"
                 className="input"
                 placeholder="Enter perk name..."
-                
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
               />
               <p className="text-xs text-zinc-500 mt-1">
                 Auto-searches as you type, or press Enter / click Search
@@ -151,7 +174,8 @@ export default function AllPerks() {
               </label>
               <select
                 className="input"
-                
+                value={merchantFilter}
+                onChange={e => setMerchantFilter(e.target.value)}
               >
                 <option value="">All Merchants</option>
                 
@@ -217,7 +241,7 @@ export default function AllPerks() {
           
           <Link
             key={perk._id}
-           
+            to={`/perks/${perk._id}`}
             className="card hover:shadow-lg transition-shadow cursor-pointer"
           >
             {/* Perk Title */}
